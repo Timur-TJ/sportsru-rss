@@ -1,0 +1,55 @@
+name: Update Sports.ru RSS
+
+on:
+  schedule:
+    - cron: '17 */12 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: sportsru-rss
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}feed.xml
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+
+      - uses: actions/configure-pages@v5
+
+      - name: Collect articles
+        run: python sports_to_rss.py --hours 48 --output public/feed.xml
+
+      - name: Save RSS
+        run: |
+          echo '<!doctype html><meta charset="utf-8"><title>Sports.ru RSS</title><a href="feed.xml">Sports.ru RSS</a>' > public/index.html
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/feed.xml public/index.html
+          if ! git diff --cached --quiet; then
+            git commit -m "Update Sports.ru RSS"
+            git push origin HEAD:main
+          fi
+
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: public
+
+      - name: Publish RSS
+        id: deployment
+        uses: actions/deploy-pages@v4
