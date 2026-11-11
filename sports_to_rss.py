@@ -16,6 +16,25 @@ import xml.etree.ElementTree as ET
 API = "https://www.sports.ru/core/post/list/"
 PAGE = "https://www.sports.ru/football/blogs/"
 
+# Маркеры для исключения материалов о российском футболе
+RU_STOPWORDS = {
+    "рпл", "спартак", "зенит", "цска", "локомотив", "краснодар",
+    "динамо москва", "ростов", "рубин", "крылья советов", "ахмат",
+    "пари нн", "факел", "оренбург", "балтика", "сочи", "химки",
+    "сборная россии", "первая лига", "фнл", "кубок россии", "дзюба"
+}
+
+
+def is_russian_football(post):
+    """Проверяет, относится ли пост к российскому футболу по заголовку и тегам."""
+    tags = " ".join(t.get("name", "").lower() for t in post.get("tags", []))
+    title = post.get("title", "").lower()
+    brief = (post.get("brief") or "").lower()
+    blog_name = post.get("blog", {}).get("name", "").lower()
+
+    text_to_check = f"{title} {tags} {brief} {blog_name}"
+    return any(stopword in text_to_check for stopword in RU_STOPWORDS)
+
 
 def fetch_posts(mode, pages, hours=48):
     posts = {}
@@ -43,7 +62,9 @@ def fetch_posts(mode, pages, hours=48):
         for post in data["documents"]:
             if not post.get("is_draft") and not post.get("is_hidden"):
                 if post["published"]["timestamp"] >= cutoff:
-                    posts[str(post["id"])] = post
+                    # Проверяем на стоп-слова перед добавлением
+                    if not is_russian_football(post):
+                        posts[str(post["id"])] = post
         next_cursor = data.get("last_published")
         if not data.get("has_more_documents") or (next_cursor and next_cursor <= cutoff):
             break
@@ -62,9 +83,9 @@ def build_feed(posts, mode):
     root = ET.Element("rss", version="2.0")
     channel = ET.SubElement(root, "channel")
     for tag, value in [
-        ("title", "Sports.ru — футбол: " + ("новые статьи" if mode == "all" else "популярные статьи")),
+        ("title", "Sports.ru — европейский футбол: " + ("новые статьи" if mode == "all" else "популярные статьи")),
         ("link", PAGE + ("#new" if mode == "all" else "#best")),
-        ("description", "Лента статей из раздела блогов Sports.ru. Неофициальный конвертер."),
+        ("description", "Лента статей из раздела блогов Sports.ru (без РПЛ). Неофициальный конвертер."),
         ("language", "ru"), ("ttl", "720"),
         ("lastBuildDate", format_datetime(datetime.now(timezone.utc))),
     ]:
